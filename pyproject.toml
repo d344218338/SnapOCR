@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "snapocr"
+version = "1.0.0"
+description = "免费本地截图OCR工具 - 识别/翻译/高亮标注"
+requires-python = ">=3.10"
+dependencies = [
+    "rapidocr-onnxruntime",
+    "Pillow",
+    "PyQt6",
+    "pynput",
+    "numpy",
+]
+
+[project.scripts]
+snapocr = "snapocr.gui.app:run_gui"
+
+[project.gui-scripts]
+snapocr-gui = "snapocr.gui.app:run_gui"
