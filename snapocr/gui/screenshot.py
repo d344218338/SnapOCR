@@ -26,13 +26,23 @@ class ScreenshotOverlay(QWidget):
         self._full_screenshot = None
 
     def start(self):
-        """开始截图：先截全屏，然后显示遮罩"""
-        screen = QGuiApplication.primaryScreen()
-        if screen is None:
+        """开始截图：先截全屏（支持多显示器），然后显示遮罩"""
+        # 计算所有屏幕的总区域
+        screens = QGuiApplication.screens()
+        if not screens:
             return
-        self._full_screenshot = screen.grabWindow(0)
-        geo = screen.geometry()
-        self.setGeometry(geo)
+
+        # 合并所有屏幕的几何区域
+        total = screens[0].geometry()
+        for s in screens[1:]:
+            total = total.united(s.geometry())
+
+        # 截取整个虚拟桌面
+        primary = QGuiApplication.primaryScreen()
+        self._full_screenshot = primary.grabWindow(0, total.x(), total.y(), total.width(), total.height())
+        self._offset = total.topLeft()  # 记录偏移量
+
+        self.setGeometry(total)
         self.showFullScreen()
         self.activateWindow()
 

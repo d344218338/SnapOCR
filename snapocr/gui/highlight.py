@@ -12,13 +12,16 @@ from PyQt6.QtGui import (
 class HighlightCanvas(QWidget):
     """画布：在图片上画高亮框"""
 
-    def __init__(self, pixmap: QPixmap, parent=None):
+    def __init__(self, pixmap: QPixmap, dim_opacity=150, border_color="#6366f1", border_width=3, parent=None):
         super().__init__(parent)
         self._original = pixmap
         self._boxes = []          # 已完成的框 [QRect, ...]
         self._current_box = None  # 正在画的框
         self._origin = QPoint()
         self._drawing = False
+        self._dim_opacity = dim_opacity
+        self._border_color = QColor(border_color)
+        self._border_width = border_width
         self.setCursor(QCursor(Qt.CursorShape.CrossCursor))
         self.setMinimumSize(200, 200)
 
@@ -52,7 +55,7 @@ class HighlightCanvas(QWidget):
 
         if all_boxes:
             # 暗色遮罩覆盖整张图
-            p.fillRect(self._draw_rect, QColor(0, 0, 0, 150))
+            p.fillRect(self._draw_rect, QColor(0, 0, 0, self._dim_opacity))
 
             # 在高亮框位置恢复原图
             for box in all_boxes:
@@ -62,7 +65,7 @@ class HighlightCanvas(QWidget):
                     p.drawPixmap(dest, self._original, img_box)
 
             # 画框边框
-            p.setPen(QPen(QColor(99, 102, 241), 2, Qt.PenStyle.SolidLine))
+            p.setPen(QPen(self._border_color, self._border_width, Qt.PenStyle.SolidLine))
             for box in all_boxes:
                 p.drawRect(box.normalized())
 
@@ -105,7 +108,7 @@ class HighlightCanvas(QWidget):
 
         if self._boxes:
             # 先画暗色遮罩
-            p.fillRect(result.rect(), QColor(0, 0, 0, 150))
+            p.fillRect(result.rect(), QColor(0, 0, 0, self._dim_opacity))
 
             # 在框位置恢复原图
             for box in self._boxes:
@@ -114,7 +117,7 @@ class HighlightCanvas(QWidget):
                     p.drawPixmap(img_box, self._original, img_box)
 
             # 画框边框
-            p.setPen(QPen(QColor(99, 102, 241), 3))
+            p.setPen(QPen(self._border_color, self._border_width))
             for box in self._boxes:
                 img_box = self._widget_to_image_rect(box)
                 if img_box.isValid():
@@ -159,7 +162,7 @@ class HighlightCanvas(QWidget):
 class HighlightWindow(QWidget):
     """高亮编辑窗口"""
 
-    def __init__(self, pixmap: QPixmap, parent=None):
+    def __init__(self, pixmap: QPixmap, dim_opacity=150, border_color="#6366f1", border_width=3, parent=None):
         super().__init__(parent)
         self.setWindowTitle("SnapOCR - 高亮标注")
         self.setMinimumSize(700, 500)
@@ -180,10 +183,10 @@ class HighlightWindow(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 16, 16, 16)
 
-        hint = QLabel("在图片上拖拽画框 → 框内正常显示，框外变暗，突出重点区域")
+        hint = QLabel("在图片上拖拽画框 → 框内正常显示，框外变暗  |  Ctrl+Z 撤销  |  Esc 关闭")
         layout.addWidget(hint)
 
-        self.canvas = HighlightCanvas(pixmap)
+        self.canvas = HighlightCanvas(pixmap, dim_opacity, border_color, border_width)
         layout.addWidget(self.canvas, 1)
 
         btn_row = QHBoxLayout()
@@ -223,3 +226,9 @@ class HighlightWindow(QWidget):
         if path:
             result = self.canvas.get_result_pixmap()
             result.save(path)
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key.Key_Z and event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            self.canvas.undo_last()
+        elif event.key() == Qt.Key.Key_Escape:
+            self.close()

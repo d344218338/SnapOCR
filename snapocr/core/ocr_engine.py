@@ -7,8 +7,9 @@ from PIL import Image
 class OCREngine:
     """OCR 识别引擎 - 本地 RapidOCR 为主"""
 
-    def __init__(self):
+    def __init__(self, lang: str = "ch"):
         self._engine = None
+        self._lang = lang
 
     def _ensure_engine(self):
         if self._engine is None:

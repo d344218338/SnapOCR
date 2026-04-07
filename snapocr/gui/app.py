@@ -108,11 +108,13 @@ class MainWindow(QMainWindow):
         self.btn_screenshot.clicked.connect(self.start_screenshot)
         top.addWidget(self.btn_screenshot)
 
-        self.btn_table = QPushButton("表格识别")
+        hk_table = self.config.get("hotkey_table", "f5").upper()
+        self.btn_table = QPushButton(f"表格识别  ({hk_table})")
         self.btn_table.clicked.connect(self.start_table_ocr)
         top.addWidget(self.btn_table)
 
-        self.btn_highlight = QPushButton("高亮标注")
+        hk_hl = self.config.get("hotkey_highlight", "f6").upper()
+        self.btn_highlight = QPushButton(f"高亮标注  ({hk_hl})")
         self.btn_highlight.clicked.connect(self.start_highlight)
         top.addWidget(self.btn_highlight)
 
@@ -162,6 +164,9 @@ class MainWindow(QMainWindow):
                  ("한국어", "ko"), ("Français", "fr"), ("Deutsch", "de")]
         for name, code in langs:
             self.lang_combo.addItem(name, code)
+        target_idx = self.lang_combo.findData(self.config.get("translate_target", "en"))
+        if target_idx >= 0:
+            self.lang_combo.setCurrentIndex(target_idx)
         translate_row.addWidget(self.lang_combo)
 
         btn_translate = QPushButton("翻译")
@@ -253,13 +258,14 @@ class MainWindow(QMainWindow):
     def _apply_config(self, config: dict):
         """应用新配置"""
         self.config = config
-        # 重新注册快捷键
         self._setup_hotkeys()
-        # 重置翻译器（模型/URL 可能改变）
         self._translator = None
+        self._ocr_engine = None  # 语言可能变了
         # 更新按钮文字
         hk = config.get("hotkey_screenshot", "f4").upper()
         self.btn_screenshot.setText(f"截图识别  ({hk})")
+        self.btn_table.setText(f"表格识别  ({config.get('hotkey_table', 'f5').upper()})")
+        self.btn_highlight.setText(f"高亮标注  ({config.get('hotkey_highlight', 'f6').upper()})")
 
     def start_screenshot(self):
         """开始截图"""
@@ -293,7 +299,7 @@ class MainWindow(QMainWindow):
             try:
                 if self._ocr_engine is None:
                     from snapocr.core.ocr_engine import OCREngine
-                    self._ocr_engine = OCREngine()
+                    self._ocr_engine = OCREngine(lang=self.config.get("ocr_language", "ch"))
 
                 # QPixmap -> PIL Image
                 img = self._qpixmap_to_pil(pixmap)
@@ -338,7 +344,12 @@ class MainWindow(QMainWindow):
     def start_highlight(self):
         """打开高亮标注窗口"""
         if self._last_pixmap:
-            self._highlight_window = HighlightWindow(self._last_pixmap)
+            self._highlight_window = HighlightWindow(
+                self._last_pixmap,
+                dim_opacity=self.config.get("highlight_dim_opacity", 150),
+                border_color=self.config.get("highlight_border_color", "#6366f1"),
+                border_width=self.config.get("highlight_border_width", 3),
+            )
             self._highlight_window.show()
         else:
             self.signals.status.emit("请先截图")
