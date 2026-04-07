@@ -17,6 +17,8 @@ from PyQt6.QtGui import (
 
 from snapocr.gui.screenshot import ScreenshotOverlay
 from snapocr.gui.highlight import HighlightWindow
+from snapocr.gui.settings import SettingsDialog
+from snapocr.core.config import load_config, save_config
 
 
 STYLE = """
@@ -77,6 +79,7 @@ class MainWindow(QMainWindow):
         self.resize(900, 620)
 
         self.signals = Signals()
+        self.config = load_config()
         self._ocr_engine = None
         self._translator = None
         self._last_pixmap = None
@@ -116,6 +119,10 @@ class MainWindow(QMainWindow):
         self.btn_file = QPushButton("从文件识别")
         self.btn_file.clicked.connect(self.ocr_from_file)
         top.addWidget(self.btn_file)
+
+        self.btn_settings = QPushButton("设置")
+        self.btn_settings.clicked.connect(self.open_settings)
+        top.addWidget(self.btn_settings)
 
         layout.addLayout(top)
 
@@ -210,21 +217,54 @@ class MainWindow(QMainWindow):
     def _setup_hotkeys(self):
         try:
             from pynput import keyboard
+
+            key_map = {}
+            for cfg_key, action in [
+                ("hotkey_screenshot", self.start_screenshot),
+                ("hotkey_table", self.start_table_ocr),
+                ("hotkey_highlight", self.start_highlight),
+            ]:
+                hk = self.config.get(cfg_key, "").lower()
+                if hk and hasattr(keyboard.Key, hk):
+                    key_map[getattr(keyboard.Key, hk)] = action
+
             def on_press(key):
                 try:
-                    if key == keyboard.Key.f4:
-                        QTimer.singleShot(0, self.start_screenshot)
+                    action = key_map.get(key)
+                    if action:
+                        QTimer.singleShot(0, action)
                 except Exception:
                     pass
+
+            if hasattr(self, '_hotkey_listener'):
+                self._hotkey_listener.stop()
             self._hotkey_listener = keyboard.Listener(on_press=on_press)
             self._hotkey_listener.daemon = True
             self._hotkey_listener.start()
         except Exception:
             pass
 
+    def open_settings(self):
+        """打开设置对话框"""
+        dlg = SettingsDialog(self)
+        dlg.settings_changed.connect(self._apply_config)
+        dlg.exec()
+
+    def _apply_config(self, config: dict):
+        """应用新配置"""
+        self.config = config
+        # 重新注册快捷键
+        self._setup_hotkeys()
+        # 重置翻译器（模型/URL 可能改变）
+        self._translator = None
+        # 更新按钮文字
+        hk = config.get("hotkey_screenshot", "f4").upper()
+        self.btn_screenshot.setText(f"截图识别  ({hk})")
+
     def start_screenshot(self):
         """开始截图"""
-        self.hide()
+        if self.config.get("capture_hide_window", True):
+            self.hide()
         QTimer.singleShot(200, self.screenshot_overlay.start)
 
     def _on_screenshot(self, pixmap: QPixmap, rect):
@@ -285,6 +325,8 @@ class MainWindow(QMainWindow):
         self.result_text.setPlainText(text)
         count = len(text.replace("\n", "").replace(" ", ""))
         self.signals.status.emit(f"识别完成 - {count} 字")
+        if self.config.get("auto_copy_text") and text.strip():
+            QApplication.clipboard().setText(text)
 
     def start_table_ocr(self):
         """表格识别模式"""
@@ -327,7 +369,10 @@ class MainWindow(QMainWindow):
             try:
                 if self._translator is None:
                     from snapocr.core.translator import Translator
-                    self._translator = Translator()
+                    self._translator = Translator(
+                        model=self.config.get("ollama_model", "gemma4:latest"),
+                        base_url=self.config.get("ollama_url", "http://localhost:11434"),
+                    )
                 result = self._translator.translate(text, target)
                 self.signals.translate_done.emit(result)
             except Exception as e:
@@ -352,8 +397,11 @@ class MainWindow(QMainWindow):
             QApplication.clipboard().setPixmap(self._last_pixmap)
 
     def closeEvent(self, event):
-        event.ignore()
-        self.hide()
+        if self.config.get("minimize_to_tray", True):
+            event.ignore()
+            self.hide()
+        else:
+            event.accept()
 
 
 class SnapOCRApp:
